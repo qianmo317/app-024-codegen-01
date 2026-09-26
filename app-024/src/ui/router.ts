@@ -1,4 +1,4 @@
-// 手写 hash 路由（#/、#/riddle/:id、#/print、#/onsite、#/library、#/settings）
+// 手写 hash 路由（#/、#/riddle/:id、#/print、#/schedule、#/onsite、#/library、#/settings）
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { store, type AppState } from '../lib/store';
 
@@ -6,6 +6,7 @@ export type Route =
   | { name: 'list' }
   | { name: 'edit'; id: string }
   | { name: 'print' }
+  | { name: 'schedule' }
   | { name: 'onsite' }
   | { name: 'library' }
   | { name: 'settings' };
@@ -16,6 +17,7 @@ export function parseHash(hash: string): Route {
   if (m) return { name: 'edit', id: decodeURIComponent(m[1]) };
   switch (path) {
     case '/print': return { name: 'print' };
+    case '/schedule': return { name: 'schedule' };
     case '/onsite': return { name: 'onsite' };
     case '/library': return { name: 'library' };
     case '/settings': return { name: 'settings' };

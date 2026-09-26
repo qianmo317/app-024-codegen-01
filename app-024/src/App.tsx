@@ -3,12 +3,14 @@ import { useAppState, useRoute, type Route } from './ui/router';
 import { RiddleList } from './pages/RiddleList';
 import { RiddleEdit } from './pages/RiddleEdit';
 import { PrintPage } from './pages/PrintPage';
+import { SchedulePage } from './pages/SchedulePage';
 import { Onsite } from './pages/Onsite';
 import { Library } from './pages/Library';
 import { Settings } from './pages/Settings';
 
 const NAV: { href: string; label: string; match: Route['name'] }[] = [
   { href: '#/', label: '谜库', match: 'list' },
+  { href: '#/schedule', label: '分场编排', match: 'schedule' },
   { href: '#/print', label: '出条打印', match: 'print' },
   { href: '#/onsite', label: '现场登记', match: 'onsite' },
   { href: '#/library', label: '谜格说明', match: 'library' },
@@ -61,6 +63,7 @@ export function App() {
           {route.name === 'list' && <RiddleList />}
           {route.name === 'edit' && <RiddleEdit id={route.id} />}
           {route.name === 'print' && <PrintPage />}
+          {route.name === 'schedule' && <SchedulePage />}
           {route.name === 'onsite' && <Onsite />}
           {route.name === 'library' && <Library />}
           {route.name === 'settings' && <Settings />}

@@ -78,7 +78,7 @@ export function PrintPage() {
         <p className="muted small">实际排版：{layout.cols} 列 × {layout.rows} 行，卡片 {layout.cardW}×{layout.cardH}mm。谜面字号 ≥ 14pt，黑白打印清晰。</p>
       </div>
 
-      <div className="print-area" data-testid="print-area">
+      <div className="print-area sheet-root" data-testid="print-area">
         {sheets.map((sheet, si) => (
           <section className="sheet" key={si} style={{ contentVisibility: si > 2 ? 'auto' : 'visible', containIntrinsicSize: '297mm' }}>
             {Array.from({ length: layout.perPage }, (_, ci) => {

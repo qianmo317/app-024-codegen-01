@@ -1,9 +1,13 @@
 // IndexedDB 轻封装（离线优先；无 IndexedDB 环境自动降级为内存存储）
 const DB_NAME = 'app-024-lantern-riddle';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 export const STORE_RIDDLES = 'riddles';
 export const STORE_RECORDS = 'records';
 export const STORE_KV = 'kv';
+export const STORE_SESSIONS = 'sessions';
+export const STORE_BOOTHS = 'booths';
+export const STORE_ASSIGNMENTS = 'assignments';
+export const STORE_BORROWS = 'borrows';
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 
@@ -23,6 +27,17 @@ function openDB(): Promise<IDBDatabase | null> {
         s.createIndex('riddleId', 'riddleId', { unique: false });
       }
       if (!db.objectStoreNames.contains(STORE_KV)) db.createObjectStore(STORE_KV, { keyPath: 'key' });
+      // v2：分场编排
+      if (!db.objectStoreNames.contains(STORE_SESSIONS)) db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(STORE_BOOTHS)) db.createObjectStore(STORE_BOOTHS, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(STORE_ASSIGNMENTS)) {
+        const s = db.createObjectStore(STORE_ASSIGNMENTS, { keyPath: 'id' });
+        s.createIndex('sessionId', 'sessionId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_BORROWS)) {
+        const s = db.createObjectStore(STORE_BORROWS, { keyPath: 'id' });
+        s.createIndex('riddleId', 'riddleId', { unique: false });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => resolve(null);

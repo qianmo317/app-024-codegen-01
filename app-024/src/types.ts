@@ -58,6 +58,51 @@ export type AppSettings = {
   prizes: string[];
 };
 
+// ---- 分场编排 ----
+/** 时段（一场灯会分若干场次，按时段先后排序） */
+export type Session = {
+  id: string;
+  name: string;      // 场次名，如「午场」
+  start: string;     // HH:MM
+  end: string;       // HH:MM
+  note?: string;
+  order: number;
+};
+
+/** 摊位（全场固定点位，跨时段复用；负责人即「归谁管」） */
+export type Booth = {
+  id: string;
+  name: string;      // 摊位名，如「A 区字谜摊」
+  owner: string;     // 负责人
+  location?: string; // 场地位置
+  note?: string;
+  order: number;
+};
+
+/**
+ * 谜条归属：每条谜条至多一条记录（id 恒等于 riddleId，天然唯一）。
+ * 归属场次 = 谜条正式所属场次；boothId 可为 ''（暂未指定摊位）。
+ */
+export type Assignment = {
+  id: string;        // = riddleId
+  riddleId: string;
+  sessionId: string;
+  boothId: string;
+  at: number;
+};
+
+/** 跨场次借用记录：归属不变，借来的场次临时挂出；归还后置 returnedAt */
+export type BorrowRecord = {
+  id: string;
+  riddleId: string;
+  fromSessionId: string; // 借出方（归属场次）
+  toSessionId: string;   // 借入方（临时挂出场次）
+  boothId: string;       // 借入场挂在哪个摊位（'' = 未指定）
+  reason?: string;
+  at: number;
+  returnedAt?: number;   // 未设置 = 借用中
+};
+
 export const CATEGORY_LABEL: Record<RiddleCategory, string> = {
   char: '猜一字', object: '猜一物', idiom: '猜成语', place: '猜地名', person: '猜人名', other: '其他',
 };

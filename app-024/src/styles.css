@@ -232,14 +232,121 @@ textarea.input { resize: vertical; }
 @media print {
   @page { size: A4 portrait; margin: 0; }
   html, body { background: #fff; }
-  .no-print, .topbar, .footer, .app > .container > *:not(.print-area):not(.page-head) { display: none !important; }
+  /* 打印表（.print-area）是页面根 div 的直接子节点；隐藏页面里除它之外的所有控件 */
+  .no-print, .topbar, .footer { display: none !important; }
   .app > .container { padding: 0; max-width: none; }
-  .page-head { display: none !important; }
-  .print-area { margin: 0; }
+  .app > .container > div > *:not(.print-area) { display: none !important; }
+  .app > .container .print-area { display: block; margin: 0; }
+  /* 谜条页：纵向 A4（命名页）；分场对照表在下方覆盖为横向命名页 */
+  .print-area.sheet-root, .sheet { page: riddlePage; }
+  @page riddlePage { size: A4 portrait; margin: 0; }
   .sheet {
     box-shadow: none; border: none; margin: 0; padding: 10mm;
     page-break-after: always; break-after: page; content-visibility: visible !important;
   }
   .sheet:last-child { page-break-after: auto; break-after: auto; }
   .card, .card * { color: #000 !important; }
+}
+
+/* ================= 分场编排 ================= */
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tab {
+  padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line);
+  background: #fff; font-size: 14px; cursor: pointer; color: var(--ink);
+}
+.tab:hover { background: #f7f0e2; }
+.tab.active { background: var(--red); border-color: var(--red-dark); color: #fff; font-weight: 600; }
+.tab-count {
+  display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 5px;
+  border-radius: 999px; background: var(--gold-soft); color: #6b4a00;
+  font-size: 11px; text-align: center;
+}
+.tab.active .tab-count { background: rgba(0,0,0,.18); color: #fff; }
+
+.setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 860px) { .setup-grid { grid-template-columns: 1fr; } }
+.inline-form { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0 12px; }
+.inline-form .input { flex: 1; min-width: 110px; }
+.booth-form .input:first-child { flex: 2; }
+.schedule-table { font-size: 13.5px; }
+.schedule-table th, .schedule-table td { padding: 6px 8px; }
+.order-btns { display: inline-flex; margin-left: 6px; gap: 0; }
+.input-sm { padding: 3px 6px; font-size: 13px; }
+.row-actions { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.row-borrowed { background: #fff8ec; }
+.row-borrowed:hover { background: #fdf2dd; }
+.row-clash { background: #fdeeee; }
+
+.batch-bar { margin-top: 8px; align-items: center; }
+.field-inline { flex-direction: row; align-items: center; gap: 6px; margin: 0; min-width: 0; }
+.field-inline > span { margin: 0; }
+
+.panel-import .autobatch { margin-top: 10px; }
+.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.chip {
+  padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line);
+  background: #fff; font-size: 13px; cursor: pointer; user-select: none;
+}
+.chip:hover { background: #f7f0e2; }
+.chip.on { background: var(--red); border-color: var(--red-dark); color: #fff; }
+.plan-preview { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; }
+
+/* 均衡面板 */
+.balance-panel .balance-bars { display: flex; flex-direction: column; gap: 7px; margin: 8px 0 10px; }
+.balance-row { display: grid; grid-template-columns: 150px 1fr 56px; gap: 10px; align-items: center; font-size: 14px; }
+.balance-name { white-space: nowrap; }
+.balance-name small { color: var(--muted); margin-left: 6px; font-size: 12px; }
+.balance-track { background: #f3ebd9; border-radius: 999px; height: 16px; overflow: hidden; }
+.balance-fill { display: block; height: 100%; background: var(--gold); border-radius: 999px; min-width: 3px; }
+.balance-fill.max { background: var(--red); }
+.balance-fill.min { background: var(--ok); }
+.balance-row b { text-align: right; }
+
+.clash-panel { border-color: #f2c4c4; background: #fdf6f6; }
+.session-summary { margin: 2px 2px 10px; }
+.booth-list h3 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.booth-list h3 small { font-weight: normal; font-size: 12.5px; color: var(--muted); }
+.booth-list h3 .badge { margin-left: auto; }
+.badge-warn { background: #fdf3d7; color: var(--warn); border-color: #ecd394; }
+.badge-borrowout { background: #ece8fb; color: #4a3a99; border-color: #cfc7ee; }
+
+/* 弹窗 */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(40,20,10,.45); z-index: 50;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal {
+  background: #fff; border-radius: 12px; padding: 18px 20px;
+  width: min(520px, 100%); max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0,0,0,.25);
+}
+.modal h3 { margin-top: 0; color: var(--red); }
+.msg { border-radius: 8px; padding: 6px 10px; font-size: 13.5px; }
+
+/* 分场打印对照表（屏幕上隐藏） */
+.schedule-print { display: none; }
+
+@media print {
+  /* 分场对照表：横向 A4 命名页，与谜条页互不影响 */
+  @page schedulePage { size: A4 landscape; margin: 8mm; }
+  body:has(.schedule-print) .schedule-print { page: schedulePage; }
+  .schedule-print { font-size: 10.5pt; color: #000; }
+  .sp-title { text-align: center; margin-bottom: 4mm; }
+  .sp-title h2 { font-size: 17pt; margin: 0 0 2mm; }
+  .sp-sub { font-size: 9.5pt; color: #333; }
+  .sp-table { width: 100%; border-collapse: collapse; margin-bottom: 4mm; font-size: 10pt; }
+  .sp-table th, .sp-table td { border: 1px solid #888; padding: 2.2mm 2.4mm; text-align: left; vertical-align: top; }
+  .sp-table th { background: #eee !important; }
+  .sp-no { width: 16mm; font-weight: 700; white-space: nowrap; }
+  .sp-advice { border: 1.5px solid #000; padding: 2.5mm 4mm; margin-bottom: 4mm; font-size: 10pt; }
+  .sp-advice ol { margin: 2mm 0 0; padding-left: 6mm; }
+  .sp-session { page-break-inside: auto; margin-bottom: 5mm; }
+  .sp-session-title {
+    font-size: 13.5pt; margin: 4mm 0 2mm; padding: 1.5mm 3mm;
+    background: #f3e9d2 !important; border-left: 4px solid #000;
+  }
+  .sp-session-title small { font-weight: normal; font-size: 10pt; }
+  .sp-booth { margin-bottom: 3.5mm; page-break-inside: avoid; }
+  .sp-booth-head { font-size: 11pt; font-weight: 700; margin-bottom: 1.5mm; }
+  .sp-booth .sp-table tr { page-break-inside: avoid; }
 }

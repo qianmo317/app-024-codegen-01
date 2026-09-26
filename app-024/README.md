@@ -2,7 +2,7 @@
 
 > 纯前端 Web 应用 ｜ 技术栈：**React 18 + TypeScript + Vite**（手写 CSS，不引入 UI 库）
 >
-> 管灯谜库、按谜格检查谜面谜底是否成立、批量打印可裁剪的谜条（含谜号与谜底回收联）、现场登记与发奖统计——办一场灯会用一套工具全搞定。
+> 管灯谜库、按谜格检查谜面谜底是否成立、分时段分摊位编排谜条、批量打印可裁剪的谜条（含谜号与谜底回收联）、现场登记与发奖统计——办一场灯会用一套工具全搞定。
 
 ## 目录
 
@@ -26,7 +26,8 @@
 | 谜格校验 | 9 种常见谜格规则引擎（详见[下文](#谜格校验能力说明)）；结果分「通过 / 存疑 / 不通过」，存疑项说明原因；无格谜只做基础校验 |
 | 出条打印 | 批量选谜生成谜条：谜号大字、谜面 ≥14pt、谜目与谜格说明、主办方落款、**同页双联回收联**（谜号 + 谜底 + 猜中者填写栏）；A4 每页 4~12 条，带裁切线，超版自动缩小并告警；支持排除重复谜面出条 |
 | 现场登记 | 大输入框按谜号登记「谁猜中、奖项、时间」；**重复登记提示**；长按快速登记；实时统计已猜中/剩余/奖品发放；兑奖号码生成（DJ-xxxx，仅生成号码不做在线抽奖） |
-| 导出 / 导入 | 谜库 CSV、现场登记表 CSV 导出（**UTF-8 with BOM**，Excel 打开不乱码）；CSV 两步式导入预览（新增 / 重复 / 格式错误分类） |
+| 分场编排 | 建多个**时段**（场次）与**摊位**（含负责人），谜条按谜目/难度/标签筛选**分批分到场次**；**同一时段内不出现重复谜面**（归一化查重，手动分配/借用均拦截）；**每条谜条只属于一个场次**（再分配即移动）；**跨场次借用**保留借用台账、可归还；给出每场每摊清单、条数均衡条形图与调整建议；清单一键导出 **CSV**、可直接**打印横向对照表**（A4） |
+| 导出 / 导入 | 谜库 CSV、分场编排清单 CSV、借用台账 CSV、现场登记表 CSV 导出（**UTF-8 with BOM**，Excel 打开不乱码）；CSV 两步式导入预览（新增 / 重复 / 格式错误分类） |
 
 ### 进阶
 
@@ -77,6 +78,7 @@ docker compose down
 |---|---|
 | `#/` | 谜库列表：筛选/搜索/分页（50 条/页）/勾选批量出条/导入导出/全库查重 |
 | `#/riddle/:id` | 谜条编辑：表单 + 实时谜格校验面板 + 重复提示（`new` 为新建） |
+| `#/schedule` | 分场编排：① 时段与摊位 ② 分批编排（筛选/自动分批）③ 场次摊位清单/撞面/均衡建议 ④ 借用记录；导出 CSV、打印对照表 |
 | `#/print` | 谜条打印：版式参数、实时预览、裁切线、同页双联 |
 | `#/onsite` | 现场登记：登记、统计、兑奖号码、大屏模式 |
 | `#/library` | 谜格说明与示例（含能力边界） |
@@ -116,7 +118,16 @@ type Riddle = {
 };
 type OnsiteRecord = { riddleId: string; winnerName?: string; prize: string; at: number; code?: string };
 type PrintSetup   = { cardWmm: number; cardHmm: number; perPage: number; showAnswerSlip: boolean; showCutLine: boolean; hostLine: string };
+
+// 分场编排（IDB v2 新增 sessions/booths/assignments/borrows 四个对象库）
+type Session      = { id; name; start; end; note?; order };                      // 时段（场次）
+type Booth        = { id; name; owner; location?; note?; order };               // 摊位（跨时段复用，owner=负责人）
+type Assignment   = { id /*=riddleId*/; riddleId; sessionId; boothId; at };     // 归属：每条谜条至多一条
+type BorrowRecord = { id; riddleId; fromSessionId; toSessionId; boothId;
+                      reason?; at; returnedAt? };                                // 跨场借用（可归还，台账保留）
 ```
+
+**分场关键约束**：`Assignment.id` 恒等于 `riddleId`，IndexedDB 主键天然保证「每条谜条只属于一个场次」；归属场次变化或谜条移出时，未归还的借用自动置为已归还，不留悬挂记录；删除摊位只把相关谜条改为「未指定摊位」，不删谜条。借用是**复制一条临时挂出记录而非移动归属**：借入方实挂 +1、借出方 -1，全场合计不变；归还后恢复。
 
 ### 存储与离线数据包
 
@@ -168,7 +179,8 @@ app-024/
 │   ├── types.ts                # 数据模型与标签映射
 │   ├── lib/
 │   │   ├── store.ts            # 集中式状态（useSyncExternalStore 模式）
-│   │   ├── idb.ts              # IndexedDB 轻封装（内存降级）
+│   │   ├── idb.ts              # IndexedDB 轻封装（内存降级，v2 含分场 4 库）
+│   │   ├── schedule.ts         # 分场编排：清单/查重/均衡建议/自动分批/导出（纯函数）
 │   │   ├── validate.ts         # 谜格校验规则引擎
 │   │   ├── duplicates.ts       # 重复检测（归一化 + 剪枝编辑距离）
 │   │   ├── normalize.ts        # 归一化与编辑距离
@@ -180,11 +192,17 @@ app-024/
 │   ├── ui/
 │   │   ├── router.ts           # 手写 hash 路由
 │   │   └── bits.tsx            # 校验徽标 / 难度星
-│   └── pages/                  # 六页面：RiddleList / RiddleEdit / PrintPage
-│                               #        Onsite / Library / Settings
+│   └── pages/
+│       ├── RiddleList.tsx      # 谜库列表
+│       ├── RiddleEdit.tsx      # 谜条编辑
+│       ├── SchedulePage.tsx    # 分场编排（时段/摊位/分批/清单/借用/打印对照表）
+│       ├── PrintPage.tsx       # 谜条打印
+│       ├── Onsite.tsx          # 现场登记
+│       ├── Library.tsx         # 谜格说明
+│       └── Settings.tsx        # 设置
 └── tests/
-    ├── *.test.ts               # 单元测试（vitest）
-    └── e2e/app.spec.ts         # E2E（Playwright）
+    ├── *.test.ts               # 单元测试（含 schedule / schedule-store）
+    └── e2e/                    # E2E（app.spec / schedule.spec，Playwright）
 ```
 
 ## 边界（刻意不做）
