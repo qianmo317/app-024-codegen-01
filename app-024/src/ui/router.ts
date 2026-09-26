@@ -6,17 +6,24 @@ export type Route =
   | { name: 'list' }
   | { name: 'edit'; id: string }
   | { name: 'print' }
+  | { name: 'print-schedule' }
   | { name: 'onsite' }
+  | { name: 'schedule' }
+  | { name: 'session'; id: string }
   | { name: 'library' }
   | { name: 'settings' };
 
 export function parseHash(hash: string): Route {
-  const path = hash.replace(/^#/, '') || '/';
+  const path = (hash.replace(/^#/, '') || '/').split('?')[0];
   const m = path.match(/^\/riddle\/(.+)$/);
   if (m) return { name: 'edit', id: decodeURIComponent(m[1]) };
+  const sm = path.match(/^\/session\/(.+)$/);
+  if (sm) return { name: 'session', id: decodeURIComponent(sm[1]) };
   switch (path) {
     case '/print': return { name: 'print' };
+    case '/print-schedule': return { name: 'print-schedule' };
     case '/onsite': return { name: 'onsite' };
+    case '/schedule': return { name: 'schedule' };
     case '/library': return { name: 'library' };
     case '/settings': return { name: 'settings' };
     default: return { name: 'list' };

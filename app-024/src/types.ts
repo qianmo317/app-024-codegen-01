@@ -52,6 +52,56 @@ export type PrintSetup = {
   hostLine: string;
 };
 
+// ---- 分场编排 ----
+/** 场次（时段） */
+export type Session = {
+  id: string;
+  name: string;          // 例：下午场
+  start: string;         // HH:MM
+  end: string;           // HH:MM
+  note?: string;
+};
+
+/** 摊位（归属某一场次） */
+export type Booth = {
+  id: string;
+  sessionId: string;
+  name: string;          // 例：A 区·字谜摊
+  owner: string;         // 负责人
+  note?: string;
+};
+
+/** 谜条归属：每条谜条只属于一个场次（ownerSessionId） */
+export type Placement = {
+  riddleId: string;
+  ownerSessionId: string;
+  boothId?: string;                 // 归属场次内的摊位；空 = 未挂摊
+};
+
+/** 跨场次借用记录（含已归还，便于留痕） */
+export type Borrow = {
+  id: string;
+  riddleId: string;
+  fromSessionId: string;
+  toSessionId: string;
+  boothId?: string;                 // 借用方挂在哪个摊位
+  status: 'active' | 'returned';
+  at: number;                       // 借出时间
+  returnedAt?: number;
+  reason?: string;
+};
+
+/** 分场编排整体（单条 KV 持久化） */
+export type Schedule = {
+  sessions: Session[];
+  booths: Booth[];
+  placements: Placement[];
+  borrows: Borrow[];
+  updatedAt: number;
+};
+
+export const EMPTY_SCHEDULE: Schedule = { sessions: [], booths: [], placements: [], borrows: [], updatedAt: 0 };
+
 export type AppSettings = {
   event: EventInfo;
   print: PrintSetup;

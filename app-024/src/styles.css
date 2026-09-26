@@ -200,6 +200,87 @@ textarea.input { resize: vertical; }
 .lib-card h3 { color: var(--red); margin-top: 0; }
 .lib-card .example { background: #fdfaf2; border-radius: 8px; padding: 8px 10px; }
 
+/* ================= 分场编排 ================= */
+.panel-tips { border-color: var(--gold); background: #fffdf5; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.panel-head h3 { margin: 0; }
+.sess-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.sess-card { display: flex; flex-direction: column; gap: 8px; }
+.sess-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.sess-card-head h3 { margin: 0; color: var(--red); }
+.sess-statline { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge-big { background: var(--red); color: #fff; border-color: var(--red-dark); font-weight: 600; }
+.badge-borrow { background: #fdeeea; color: #9a4a12; border-color: #f2cfa9; }
+.badge-lend { background: #eaf1fd; color: #274a8f; border-color: #c3d4f2; }
+.panel-edit { border-color: var(--gold); background: #fffdf6; }
+.field-time { max-width: 120px; flex: 0 1 120px; }
+.back-link { font-size: 14px; color: var(--muted); text-decoration: none; margin-right: 4px; }
+.back-link:hover { color: var(--red); }
+
+.booth-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.booth-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px;
+  border: 1px solid var(--line); border-radius: 999px; background: #fdfaf2; font-size: 13px;
+}
+.booth-chip b { color: var(--ink); }
+.booth-chip-ops { display: inline-flex; gap: 2px; }
+.booth-editor { background: #fffdf6; border: 1px dashed #ecd394; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+.flex2 { flex: 2; }
+.input-sm { padding: 3px 7px; font-size: 13px; }
+.pager-sm { margin: 8px 0; gap: 8px; }
+
+.session-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; align-items: start; }
+@media (max-width: 960px) { .session-grid { grid-template-columns: 1fr; } }
+.session-list { max-height: 640px; overflow-y: auto; }
+.assign-pool { max-height: 320px; overflow-y: auto; margin-bottom: 8px; }
+.row-dup { background: #fdeeee; }
+.row-dup:hover { background: #fbe3e3; }
+
+/* 均衡条形 */
+.balance-bars { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.balance-row { display: grid; grid-template-columns: 110px 1fr 40px; align-items: center; gap: 8px; }
+.balance-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.balance-track { background: #f3ecdd; border-radius: 6px; height: 14px; overflow: hidden; }
+.balance-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), #e29b12); border-radius: 6px; min-width: 2px; }
+.fill-loose { background: var(--bad); }
+.balance-num { font-weight: 700; color: var(--red); text-align: right; }
+
+/* ================= 分场对照表打印 ================= */
+.schedule-print { display: flex; flex-direction: column; gap: 12px; }
+.cp-sheet {
+  background: #fff; border: 1px solid var(--line); border-radius: 8px;
+  padding: 16px 18px; box-shadow: 0 1px 6px rgba(0,0,0,.08);
+}
+.cp-head { border-bottom: 2px solid var(--red); padding-bottom: 6px; margin-bottom: 10px; }
+.cp-head h2 { margin: 0; font-size: 19px; color: var(--red); }
+.cp-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.cp-block { margin-bottom: 14px; break-inside: avoid; }
+.cp-block-title {
+  font-size: 14px; font-weight: 700; background: #faf4e6; border-left: 4px solid var(--gold);
+  padding: 5px 10px; margin-bottom: 0;
+}
+.cp-count { font-weight: 400; color: var(--muted); }
+.cp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cp-table th, .cp-table td { border: 1px solid #d8cfbc; padding: 4px 8px; text-align: left; }
+.cp-table th { background: #f6efe0; }
+.cp-no { width: 52px; font-weight: 700; color: var(--red); }
+.cp-cat { width: 70px; }
+.cp-diff { width: 52px; color: var(--gold); }
+.cp-mode { width: 48px; }
+.cp-empty { text-align: center; color: var(--muted); }
+.cp-foot { margin-top: 8px; color: #999; font-size: 11px; text-align: right; }
+
+@media print {
+  .schedule-print { gap: 0; }
+  .cp-sheet {
+    border: none; box-shadow: none; border-radius: 0; padding: 6mm 8mm;
+    page-break-after: always; break-after: page;
+  }
+  .cp-sheet:last-child { page-break-after: auto; break-after: auto; }
+  .cp-table, .cp-table * { color: #000 !important; }
+  .cp-table th { background: #eee !important; }
+}
+
 /* ================= 打印 ================= */
 .print-area { margin-top: 10px; }
 .sheet {
@@ -232,7 +313,8 @@ textarea.input { resize: vertical; }
 @media print {
   @page { size: A4 portrait; margin: 0; }
   html, body { background: #fff; }
-  .no-print, .topbar, .footer, .app > .container > *:not(.print-area):not(.page-head) { display: none !important; }
+  .no-print, .topbar, .footer,
+  .app > .container > *:not(.print-area):not(.page-head):not(.schedule-print) { display: none !important; }
   .app > .container { padding: 0; max-width: none; }
   .page-head { display: none !important; }
   .print-area { margin: 0; }
@@ -242,4 +324,10 @@ textarea.input { resize: vertical; }
   }
   .sheet:last-child { page-break-after: auto; break-after: auto; }
   .card, .card * { color: #000 !important; }
+}
+
+/* 分场对照表：A4 横向（PrintSchedule 挂载时给 <html> 加 .print-landscape） */
+@page landscape { size: A4 landscape; margin: 8mm; }
+@media print {
+  html.print-landscape body { page: landscape; }
 }

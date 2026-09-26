@@ -23,6 +23,7 @@
 | 模块 | 说明 |
 |---|---|
 | 谜库管理 | 谜面、谜目（猜一字/一物/成语/地名/人名/其他）、谜底、谜格、作者出处、难度（1~3 星）、适用年龄、标签、备注；**重复检测**（谜面归一化后编辑距离，同谜目相似度 ≥85% 提示） |
+| 分场编排 | 建**时段（场次）与摊位（含负责人）**；把谜条按**谜目/难度/标签分批分场**；每条谜条只属于一个场次、同一时段内不出现重复谜面（硬拦截）；**跨场借用留借用记录可归还**；每场次/每摊位清单 + **条数均衡分析与一键调整建议**；改动一场不影响其它场；清单导出单个 CSV 或打印成 **A4 横向对照表** |
 | 谜格校验 | 9 种常见谜格规则引擎（详见[下文](#谜格校验能力说明)）；结果分「通过 / 存疑 / 不通过」，存疑项说明原因；无格谜只做基础校验 |
 | 出条打印 | 批量选谜生成谜条：谜号大字、谜面 ≥14pt、谜目与谜格说明、主办方落款、**同页双联回收联**（谜号 + 谜底 + 猜中者填写栏）；A4 每页 4~12 条，带裁切线，超版自动缩小并告警；支持排除重复谜面出条 |
 | 现场登记 | 大输入框按谜号登记「谁猜中、奖项、时间」；**重复登记提示**；长按快速登记；实时统计已猜中/剩余/奖品发放；兑奖号码生成（DJ-xxxx，仅生成号码不做在线抽奖） |
@@ -75,7 +76,10 @@ docker compose down
 
 | 路由 | 页面 |
 |---|---|
-| `#/` | 谜库列表：筛选/搜索/分页（50 条/页）/勾选批量出条/导入导出/全库查重 |
+| `#/` | 谜库列表：筛选/搜索/分页（50 条/页）/勾选批量出条/导入导出/全库查重（含「场次」列） |
+| `#/schedule` | 分场编排：场次/摊位、跨场均衡建议、借用记录、导出清单、进入场次编排 |
+| `#/session/:id` | 场次详情：按谜目/难度/标签分批分场、挂摊、跨场借用、场内查重、摊位均衡 |
+| `#/print-schedule` | 分场对照表打印（A4 横向，按场次→摊位分组；支持 `?s=场次id` 只打一场） |
 | `#/riddle/:id` | 谜条编辑：表单 + 实时谜格校验面板 + 重复提示（`new` 为新建） |
 | `#/print` | 谜条打印：版式参数、实时预览、裁切线、同页双联 |
 | `#/onsite` | 现场登记：登记、统计、兑奖号码、大屏模式 |
@@ -116,6 +120,14 @@ type Riddle = {
 };
 type OnsiteRecord = { riddleId: string; winnerName?: string; prize: string; at: number; code?: string };
 type PrintSetup   = { cardWmm: number; cardHmm: number; perPage: number; showAnswerSlip: boolean; showCutLine: boolean; hostLine: string };
+
+// 分场编排（整体存一条 IndexedDB KV：key=schedule）
+type Session   = { id; name; start; end; note? };                 // 时段
+type Booth     = { id; sessionId; name; owner; note? };          // 摊位 + 负责人
+type Placement = { riddleId; ownerSessionId; boothId? };         // 每条谜条唯一归属
+type Borrow    = { id; riddleId; fromSessionId; toSessionId; boothId?;
+                   status: 'active'|'returned'; at; returnedAt?; reason? };
+type Schedule  = { sessions; booths; placements; borrows; updatedAt };
 ```
 
 ### 存储与离线数据包
@@ -141,7 +153,7 @@ npm run e2e  # 端到端测试（Playwright）
 
 | 测试 | 覆盖 | 结果 |
 |---|---|---|
-| 单元测试 106 例 | 谜格校验 48 例（各格正例/误例/跨检查组合、生僻字、多音字）、重复检测（不同标点判重/繁简归一/阈值以下不误报）、CSV 解析导出与导入预览、打印版式（6/9/12 条/页、超版告警）、**性能（2000 条筛选 <100ms）**、离线数据包集成 | 全部通过 |
+| 单元测试 135 例 | 谜格校验 49 例、CSV 25、重复检测 13、打印版式 9、**分场编排 27（归属唯一/场内查重/借用留痕/均衡/导出）**、分场 store 集成 2、性能 3、离线数据 7 | 全部通过 |
 | E2E 19 例 | 导入→校验→出条→登记→导出全流程、搜索筛选、批量出条打印预览（双联/裁切线/14pt 谜面）、现场登记与重复登记提示、大屏分级提示、兑奖号码、CSV 导出 BOM 字节断言、设置持久化、**300 张谜条 50 页无错位**、**离线登记落库不丢**、控制台零报错、错误路由容错 | 全部通过 |
 
 ## 项目结构
@@ -169,6 +181,7 @@ app-024/
 │   ├── lib/
 │   │   ├── store.ts            # 集中式状态（useSyncExternalStore 模式）
 │   │   ├── idb.ts              # IndexedDB 轻封装（内存降级）
+│   │   ├── schedule.ts         # 分场编排纯函数（场次/摊位/归属/借用/查重/均衡/导出）
 │   │   ├── validate.ts         # 谜格校验规则引擎
 │   │   ├── duplicates.ts       # 重复检测（归一化 + 剪枝编辑距离）
 │   │   ├── normalize.ts        # 归一化与编辑距离
@@ -180,8 +193,8 @@ app-024/
 │   ├── ui/
 │   │   ├── router.ts           # 手写 hash 路由
 │   │   └── bits.tsx            # 校验徽标 / 难度星
-│   └── pages/                  # 六页面：RiddleList / RiddleEdit / PrintPage
-│                               #        Onsite / Library / Settings
+│   └── pages/                  # 页面：RiddleList / RiddleEdit / Schedule / SessionPage
+│                               #       PrintSchedule / PrintPage / Onsite / Library / Settings
 └── tests/
     ├── *.test.ts               # 单元测试（vitest）
     └── e2e/app.spec.ts         # E2E（Playwright）

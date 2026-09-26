@@ -270,4 +270,140 @@ test.describe('元宵灯谜库 E2E', () => {
     await expect(page.locator('.stat-ok')).toContainText('3');
     await expect(page.locator('.records-table tbody tr')).toHaveCount(3);
   });
+
+  test('分场编排：建场次与摊位 → 分批分场 → 均衡条出现', async ({ page }) => {
+    await importSample(page);
+    await page.click('nav >> text=分场编排');
+    await expect(page.getByRole('heading', { name: /分场编排/ })).toBeVisible();
+    // 建下午场
+    await page.click('button:has-text("新建场次")');
+    await page.locator('.panel-edit input').first().fill('下午场');
+    await page.click('.panel-edit button:has-text("保存")');
+    await expect(page.locator('.sess-card', { hasText: '下午场' })).toBeVisible();
+    // 建晚场
+    await page.click('button:has-text("新建场次")');
+    await page.locator('.panel-edit input').first().fill('晚场');
+    await page.click('.panel-edit button:has-text("保存")');
+
+    // 进入下午场，建两个摊位
+    await page.click('.sess-card:has-text("下午场") a:has-text("进入编排")');
+    await expect(page.locator('h1')).toContainText('下午场');
+    await page.click('button:has-text("新建摊位")');
+    await page.locator('.booth-editor input').nth(0).fill('字谜摊');
+    await page.locator('.booth-editor input').nth(1).fill('张三');
+    await page.click('.booth-editor button:has-text("保存摊位")');
+    await page.click('button:has-text("新建摊位")');
+    await page.locator('.booth-editor input').nth(0).fill('成语摊');
+    await page.locator('.booth-editor input').nth(1).fill('李四');
+    await page.click('.booth-editor button:has-text("保存摊位")');
+    await expect(page.locator('.booth-chip', { hasText: '字谜摊' })).toBeVisible();
+
+    // 筛选「猜一字」，全选本页，分入本场
+    await page.selectOption('.panel:has-text("分批分入") select', 'char');
+    const poolCount = await page.locator('.assign-pool tbody tr').count();
+    expect(poolCount).toBeGreaterThan(0);
+    await page.click('button:has-text("全选本页")');
+    await page.click('button:has-text("分入本场")');
+    await expect(page.locator('.msg-ok')).toContainText('已把');
+    // 本场谜条表出现，谜目都是猜一字
+    await expect(page.locator('.session-list tbody tr').first()).toContainText('猜一字');
+    // 均衡面板列出两个摊位
+    await expect(page.locator('.balance-name', { hasText: '字谜摊' })).toBeVisible();
+    await expect(page.locator('.balance-name', { hasText: '成语摊' })).toBeVisible();
+  });
+
+  test('分场编排：每条谜条只属于一个场次，跨场借用留记录', async ({ page }) => {
+    await importSample(page);
+    await page.goto('/#/schedule');
+    await page.click('button:has-text("新建场次")');
+    await page.locator('.panel-edit input').first().fill('第一场');
+    await page.click('.panel-edit button:has-text("保存")');
+    await page.click('button:has-text("新建场次")');
+    await page.locator('.panel-edit input').first().fill('第二场');
+    await page.click('.panel-edit button:has-text("保存")');
+
+    // 第一场分入前两条
+    await page.click('.sess-card:has-text("第一场") a:has-text("进入编排")');
+    const checkboxes = page.locator('.assign-pool tbody input[type=checkbox]');
+    await checkboxes.nth(0).check();
+    await checkboxes.nth(1).check();
+    await page.click('button:has-text("分入本场")');
+    await expect(page.locator('.session-list tbody tr')).toHaveCount(2);
+    await page.locator('.session-list tbody tr').first().textContent();
+
+    // 第二场候选池不含已归属谜条；改为跨场借用第一条
+    await page.goto('/#/schedule');
+    await page.click('.sess-card:has-text("第二场") a:has-text("进入编排")');
+    const poolInSecond = await page.locator('.assign-pool tbody tr').count();
+    expect(poolInSecond).toBeLessThan(53);
+    await page.selectOption('.panel:has-text("跨场借用") select', { index: 1 });
+    await page.click('button:has-text("借入并留记录")');
+    await expect(page.locator('.msg-ok')).toContainText('已借入');
+    await expect(page.locator('.badge-borrow')).toBeVisible();
+    // 总览出现借入计数与借用记录
+    await page.goto('/#/schedule');
+    await expect(page.locator('.sess-card', { hasText: '第二场' })).toContainText('借入 1');
+    await expect(page.locator('table', { hasText: '出借场次' })).toBeVisible();
+  });
+
+  test('分场编排：场内重复谜面被拦截', async ({ page }) => {
+    await importSample(page);
+    await page.goto('/#/schedule');
+    await page.click('button:has-text("新建场次")');
+    await page.locator('.panel-edit input').first().fill('下午场');
+    await page.click('.panel-edit button:has-text("保存")');
+    await page.click('.sess-card a:has-text("进入编排")');
+    // 分入全库第一页前两条
+    await page.locator('.assign-pool tbody input[type=checkbox]').nth(0).check();
+    await page.locator('.assign-pool tbody input[type=checkbox]').nth(1).check();
+    await page.click('button:has-text("分入本场")');
+    // 手工导入一条与谜号1同谜面（不同标点）的新谜，再分入应被硬拦截
+    const dupCsv = '谜面,谜底,谜目,谜格\n一口咬掉牛尾巴！,告,猜一字,无格';
+    await page.goto('/');
+    await page.setInputFiles('input[type=file]', {
+      name: 'dup1.csv', mimeType: 'text/csv', buffer: Buffer.from(dupCsv, 'utf8'),
+    });
+    await page.click('button:has-text("确认导入")');
+    await page.goto('/#/schedule');
+    await page.click('.sess-card a:has-text("进入编排")');
+    await page.locator('.assign-pool tbody input[type=checkbox]').nth(0).check();
+    await page.click('button:has-text("分入本场")');
+    await expect(page.locator('.msg-bad')).toContainText('重复谜面被拦截');
+  });
+
+  test('分场编排：清单导出 BOM 与对照表打印页', async ({ page }) => {
+    await importSample(page);
+    await page.goto('/#/schedule');
+    await page.click('button:has-text("新建场次")');
+    await page.locator('.panel-edit input').first().fill('下午场');
+    await page.click('.panel-edit button:has-text("保存")');
+    await page.click('.sess-card a:has-text("进入编排")');
+    await page.click('button:has-text("全选本页")');
+    await page.click('button:has-text("分入本场")');
+    await page.goto('/#/schedule');
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('button:has-text("导出清单 CSV")'),
+    ]);
+    const buf = readFileSync((await download.path())!);
+    expect([buf[0], buf[1], buf[2]]).toEqual([0xef, 0xbb, 0xbf]);
+    const text = buf.toString('utf8');
+    expect(text).toContain('场次,开始,结束,摊位,摊位负责人,谜号');
+    expect(text).toContain('下午场');
+    // 打印对照表
+    await page.click('button:has-text("打印对照表")');
+    await expect(page).toHaveURL(/#\/print-schedule/);
+    await expect(page.locator('.cp-sheet')).toHaveCount(1);
+    await expect(page.locator('.cp-head h2')).toContainText('下午场');
+  });
+
+  test('分场编排：持久化，刷新后场次仍在', async ({ page }) => {
+    await importSample(page);
+    await page.goto('/#/schedule');
+    await page.click('button:has-text("新建场次")');
+    await page.locator('.panel-edit input').first().fill('持久化场');
+    await page.click('.panel-edit button:has-text("保存")');
+    await page.reload();
+    await expect(page.locator('.sess-card', { hasText: '持久化场' })).toBeVisible();
+  });
 });

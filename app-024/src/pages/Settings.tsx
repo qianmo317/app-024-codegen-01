@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useAppState } from '../ui/router';
 import { riddleToRow, stringifyCSV, withBOM, RIDDLE_CSV_HEADERS } from '../lib/csv';
+import { scheduleListRows, borrowRows, SCHEDULE_HEADERS, BORROW_HEADERS } from '../lib/schedule';
 import { downloadText } from '../lib/format';
 import { exportFileName, store } from '../lib/store';
 
@@ -39,6 +40,16 @@ export function Settings() {
     downloadText(exportFileName('现场登记', 'csv'), withBOM(csv));
   };
 
+  const exportSchedule = () => {
+    const csv = stringifyCSV([SCHEDULE_HEADERS, ...scheduleListRows(state.schedule, state.riddles)]);
+    downloadText(exportFileName('分场清单', 'csv'), withBOM(csv));
+  };
+
+  const exportBorrows = () => {
+    const csv = stringifyCSV([BORROW_HEADERS, ...borrowRows(state.schedule, state.riddles)]);
+    downloadText(exportFileName('跨场借用记录', 'csv'), withBOM(csv));
+  };
+
   const clearRecords = async () => {
     if (!confirm(`确定清空全部 ${state.records.length} 条登记记录？此操作不可恢复。`)) return;
     await store.clearRecords();
@@ -48,6 +59,11 @@ export function Settings() {
     if (!confirm(`确定清空谜库全部 ${state.riddles.length} 条谜？此操作不可恢复。`)) return;
     await store.clearRiddles();
     setNotice('谜库已清空');
+  };
+  const clearSchedule = async () => {
+    if (!confirm('确定清空全部分场编排（场次、摊位、归属、借用记录）？谜条本身不受影响。')) return;
+    await store.clearSchedule();
+    setNotice('分场编排已清空');
   };
 
   return (
@@ -116,8 +132,13 @@ export function Settings() {
             <button className="btn" onClick={exportRecords}>⬇ 导出现场登记表 CSV（UTF-8 BOM）</button>
           </div>
           <div className="btn-row wrap">
+            <button className="btn" onClick={exportSchedule}>⬇ 导出分场清单 CSV</button>
+            <button className="btn" onClick={exportBorrows} disabled={!state.schedule.borrows.length}>⬇ 导出跨场借用记录</button>
+          </div>
+          <div className="btn-row wrap">
             <button className="btn btn-danger" onClick={() => void clearRecords()}>清空现场登记（{state.records.length}）</button>
             <button className="btn btn-danger" onClick={() => void clearRiddles()}>清空谜库（{state.riddles.length}）</button>
+            <button className="btn btn-danger" onClick={() => void clearSchedule()}>清空分场编排（{state.schedule.sessions.length} 场）</button>
           </div>
           <p className="muted small">谜库 CSV 导入在「谜库」页右上角；示例文件见 <a href={`${import.meta.env.BASE_URL}samples/riddles.csv`} download>riddles.csv</a>。全部数据保存在本机 IndexedDB，导出文件请自行留存。</p>
         </div>

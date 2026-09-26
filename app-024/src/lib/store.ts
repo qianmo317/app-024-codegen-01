@@ -1,11 +1,14 @@
 // 集中式应用状态：数据读写全部在此，UI 只做展示与动作调用
-import type { AppSettings, OnsiteRecord, Riddle } from '../types';
+import type { AppSettings, OnsiteRecord, Riddle, Schedule, Session, Booth } from '../types';
+import { EMPTY_SCHEDULE } from '../types';
 import { validateRiddle } from './validate';
 import { EMPTY_CTX, loadDataCtx, type DataCtx } from './datafiles';
 import * as idb from './idb';
 import { formatDate } from './format';
+import * as sch from './schedule';
 
 const KV_SETTINGS = 'settings';
+const KV_SCHEDULE = 'schedule';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   event: { id: 'event-default', title: '元宵灯会', host: '', date: '', riddleIds: [] },
@@ -22,6 +25,7 @@ export interface AppState {
   riddles: Riddle[];
   records: OnsiteRecord[];
   settings: AppSettings;
+  schedule: Schedule;
   ctx: DataCtx; // 拼音/部件离线数据
   selected: Set<string>; // 批量出条选中（会话级，不持久化）
 }
@@ -38,6 +42,7 @@ class AppStore {
     riddles: [],
     records: [],
     settings: DEFAULT_SETTINGS,
+    schedule: EMPTY_SCHEDULE,
     ctx: EMPTY_CTX,
     selected: new Set<string>(),
   };
@@ -59,10 +64,11 @@ class AppStore {
   init(): Promise<void> {
     if (!this.initPromise) {
       this.initPromise = (async () => {
-        const [riddles, records, settings, ctx] = await Promise.all([
+        const [riddles, records, settings, schedule, ctx] = await Promise.all([
           idb.getAll<Riddle>(idb.STORE_RIDDLES),
           idb.getAll<OnsiteRecord>(idb.STORE_RECORDS),
           idb.getKV<AppSettings>(KV_SETTINGS),
+          idb.getKV<Schedule>(KV_SCHEDULE),
           loadDataCtx(import.meta.env.BASE_URL),
         ]);
         this.state.riddles = riddles.sort((a, b) => a.no - b.no);
@@ -73,6 +79,11 @@ class AppStore {
             print: { ...DEFAULT_SETTINGS.print, ...settings.print },
             prizes: settings.prizes?.length ? settings.prizes : DEFAULT_SETTINGS.prizes,
           };
+        }
+        if (schedule) {
+          this.state.schedule = { ...EMPTY_SCHEDULE, ...schedule,
+            sessions: schedule.sessions ?? [], booths: schedule.booths ?? [],
+            placements: schedule.placements ?? [], borrows: schedule.borrows ?? [] };
         }
         if (!this.state.settings.print.hostLine && this.state.settings.event.host) {
           this.state.settings.print.hostLine = `${this.state.settings.event.host}`;
@@ -149,16 +160,24 @@ class AppStore {
     const set = new Set(ids);
     this.state.riddles = this.state.riddles.filter((r) => !set.has(r.id));
     this.state.settings.event.riddleIds = this.state.settings.event.riddleIds.filter((x) => !set.has(x));
-    await Promise.all(ids.map((id) => idb.del(idb.STORE_RIDDLES, id)));
-    await this.saveSettings(this.state.settings); // 同步活动清单
+    this.state.schedule = sch.pruneRiddles(this.state.schedule, ids);
+    await Promise.all([
+      ...ids.map((id) => idb.del(idb.STORE_RIDDLES, id)),
+      this.saveSettings(this.state.settings),
+      this.persistSchedule(),
+    ]);
     this.emit();
   }
 
   async clearRiddles(): Promise<void> {
     this.state.riddles = [];
     this.state.settings.event.riddleIds = [];
-    await idb.clearStore(idb.STORE_RIDDLES);
-    await this.saveSettings(this.state.settings);
+    this.state.schedule = { ...EMPTY_SCHEDULE, updatedAt: Date.now() };
+    await Promise.all([
+      idb.clearStore(idb.STORE_RIDDLES),
+      this.saveSettings(this.state.settings),
+      this.persistSchedule(),
+    ]);
     this.emit();
   }
 
@@ -235,6 +254,96 @@ class AppStore {
     };
     await idb.setKV(KV_SETTINGS, this.state.settings);
     this.emit();
+  }
+
+  // ---- 分场编排 ----
+  private async persistSchedule(): Promise<void> {
+    await idb.setKV(KV_SCHEDULE, this.state.schedule);
+  }
+
+  /** 直接替换编排（纯函数计算结果落库） */
+  private commitSchedule(next: Schedule): Promise<void> {
+    this.state.schedule = next;
+    return this.persistSchedule().then(() => this.emit());
+  }
+
+  async saveSession(input: { id?: string; name: string; start: string; end: string; note?: string }): Promise<Session> {
+    const session: Session = {
+      id: input.id ?? sch.scheduleUid('sess'),
+      name: input.name.trim() || '未命名场次',
+      start: input.start, end: input.end,
+      note: input.note?.trim() || undefined,
+    };
+    await this.commitSchedule(sch.upsertSession(this.state.schedule, session));
+    return session;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    await this.commitSchedule(sch.removeSession(this.state.schedule, id));
+  }
+
+  async saveBooth(input: { id?: string; sessionId: string; name: string; owner: string; note?: string }): Promise<Booth> {
+    const booth: Booth = {
+      id: input.id ?? sch.scheduleUid('booth'),
+      sessionId: input.sessionId,
+      name: input.name.trim() || '未命名摊位',
+      owner: input.owner.trim(),
+      note: input.note?.trim() || undefined,
+    };
+    await this.commitSchedule(sch.upsertBooth(this.state.schedule, booth));
+    return booth;
+  }
+
+  async deleteBooth(id: string): Promise<void> {
+    await this.commitSchedule(sch.removeBooth(this.state.schedule, id));
+  }
+
+  /** 分批分场：把谜条设为某场次自有；返回跳过（重复/已在）清单 */
+  async assignRiddles(riddleIds: string[], sessionId: string): Promise<sch.AssignResult['skipped']> {
+    const result = sch.assignRiddles(this.state.schedule, riddleIds, sessionId, this.state.riddles);
+    this.state.schedule = result.schedule;
+    await this.persistSchedule();
+    this.emit();
+    return result.skipped;
+  }
+
+  async unassignRiddles(riddleIds: string[]): Promise<void> {
+    await this.commitSchedule(sch.unassignRiddles(this.state.schedule, riddleIds));
+  }
+
+  async setBooth(riddleId: string, sessionId: string, boothId: string | undefined): Promise<void> {
+    await this.commitSchedule(sch.setBooth(this.state.schedule, riddleId, sessionId, boothId));
+  }
+
+  async assignManyToBooth(riddleIds: string[], sessionId: string, boothId: string): Promise<void> {
+    let next = this.state.schedule;
+    for (const id of riddleIds) next = sch.setBooth(next, id, sessionId, boothId);
+    await this.commitSchedule(next);
+  }
+
+  async borrowRiddle(
+    riddleId: string, toSessionId: string, opts: { boothId?: string; reason?: string } = {},
+  ): Promise<{ ok: boolean; error?: sch.BorrowResult['error']; conflictNo?: number }> {
+    const result = sch.borrowRiddle(this.state.schedule, riddleId, toSessionId, this.state.riddles, opts);
+    if (result.error) return { ok: false, error: result.error, conflictNo: result.conflictNo };
+    await this.commitSchedule(result.schedule);
+    return { ok: true };
+  }
+
+  async returnBorrow(borrowId: string): Promise<void> {
+    await this.commitSchedule(sch.returnBorrow(this.state.schedule, borrowId));
+  }
+
+  /** 一键均衡：按纯函数给出的方案调整挂摊，返回挪动条数 */
+  async autoBalance(sessionId: string): Promise<number> {
+    const analysis = sch.analyzeBalance(this.state.schedule, sessionId, this.state.riddles);
+    if (!analysis.moves.length) return 0;
+    await this.commitSchedule(sch.applyMoves(this.state.schedule, sessionId, analysis.moves));
+    return analysis.moves.length;
+  }
+
+  async clearSchedule(): Promise<void> {
+    await this.commitSchedule({ ...EMPTY_SCHEDULE, updatedAt: Date.now() });
   }
 
   // ---- 统计 ----

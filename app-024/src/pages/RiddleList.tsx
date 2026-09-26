@@ -6,6 +6,7 @@ import { EMPTY_FILTERS, filterRiddles, allTags, type RiddleFilters } from '../li
 import { scanDuplicates, type DupMatch } from '../lib/duplicates';
 import { importPreview, riddleToRow, stringifyCSV, withBOM, RIDDLE_CSV_HEADERS, type ImportPreview } from '../lib/csv';
 import { CATEGORY_LABEL, FORMAT_LABEL, VERDICT_LABEL, type Riddle, type Verdict } from '../types';
+import { ownerSessionOf } from '../lib/schedule';
 import { downloadText, formatDateTime } from '../lib/format';
 import { exportFileName, store } from '../lib/store';
 
@@ -236,12 +237,14 @@ export function RiddleList() {
                     onChange={(e) => store.selectMany(rows.map((r) => r.id), e.target.checked)}
                   />
                 </th>
-                <th>谜号</th><th>谜面</th><th>谜底</th><th>谜目</th><th>谜格</th><th>难度</th><th>校验</th><th>登记</th>
+                <th>谜号</th><th>谜面</th><th>谜底</th><th>谜目</th><th>谜格</th><th>难度</th><th>校验</th><th>场次</th><th>登记</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const recs = state.records.filter((x) => x.riddleId === r.id);
+                const ownerId = ownerSessionOf(state.schedule, r.id);
+                const ownerName = ownerId ? state.schedule.sessions.find((x) => x.id === ownerId)?.name : '';
                 return (
                   <tr key={r.id}>
                     <td><input type="checkbox" aria-label={`选中 ${r.no}`} checked={selected.has(r.id)} onChange={() => store.toggleSelect(r.id)} /></td>
@@ -252,6 +255,9 @@ export function RiddleList() {
                     <td>{r.format === 'none' ? '' : FORMAT_LABEL[r.format]}</td>
                     <td><Stars n={r.difficulty} /></td>
                     <td><VerdictBadge verdict={r.check.verdict} /></td>
+                    <td>{ownerName
+                      ? <a className="badge badge-solved" style={{ textDecoration: 'none' }} href={ownerId ? `#/session/${ownerId}` : '#/schedule'}>{ownerName}</a>
+                      : <span className="muted">未分场</span>}</td>
                     <td>{recs.length ? <span className="badge badge-solved">{recs.length} 次猜中</span> : ''}</td>
                   </tr>
                 );

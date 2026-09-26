@@ -23,6 +23,13 @@
 4. **出条打印**：按选定范围生成 A4 谜条，卡片尺寸与每页条数可配（4/6/8/9/12 条，`PrintPage.tsx:52`），带裁切线，支持「同页双联回收联」（谜号 + 谜底 + 猜中者填写栏）与主办方落款；超出版面自动缩小并给出告警文案（`print.ts:45-47`）。
 5. **现场登记**：大输入框按谜号登记「猜中者 / 奖项 / 备注」（`Onsite.tsx:110-121`），重复登记当场拦截；长按 0.6 秒快速登记（用第一个奖项，`Onsite.tsx:63-70`）；实时统计总数 / 已猜中 / 剩余 / 奖品发放（`store.ts:241-249`）；兑奖号码按登记时间顺序从 `DJ-0001` 起生成（`store.ts:215-227`）。
 6. **导入导出**：谜库与登记表导出 UTF-8 with BOM 的 CSV（`csv.ts:44`，Excel 打开不乱码）；导入走两步式预览，分为新增 / 重复 / 格式错误三类，确认后才写库（`csv.ts:121-173`）。
+7. **分场编排**（`src/lib/schedule.ts`、`Schedule.tsx`、`SessionPage.tsx`、`PrintSchedule.tsx`）：
+   - 先建**场次（时段）与摊位（含负责人）**；谜条按**谜目 / 难度 / 标签筛选后勾选分批分场**（候选池只列尚未归属的谜条）。
+   - **每条谜条只属于一个场次**：`Placement{ riddleId, ownerSessionId, boothId? }` 全局唯一归属；再次分到别场即「转移」，自动收回其在外有效借用，原场不再含此条；改一场不影响其它场的安排。
+   - **同一时段内不出现重复谜面**：分入 / 借入前对在场谜面归一化比对，全等（忽略标点繁简）**硬拦截**并报冲突谜号；同谜目相似度 ≥0.85 在页面列为预警（`findSessionDupIssues`、`exactConflict`）。
+   - **跨场次借用留记录**：归属不变，生成 `Borrow{status:'active'}` 记录（出借场/借用场/挂摊/事由/时间），归还标记 `returned` 并保留留痕；场内清单用「自有 / 借用」徽标区分。
+   - **均衡与调整建议**：`analyzeBalance` 统计每摊条数与未挂摊，以「最多最少相差 ≤1 且无未挂摊」为均衡，给出文字建议和一套「挪到哪个摊」的 moves，可单步应用或一键均衡；总览页再给场次间条数与未分场提示。
+   - **清单导出 / 打印**：一份 CSV（场次/时间/摊位/负责人/谜号/谜面/谜底/谜目/难度/标签/在场方式/归属场次），可只导单场；`#/print-schedule` 生成 A4 横向、按场次→摊位分组的对照表，可直接打印或存 PDF。
 
 ## 5. 进阶功能
 - 多维筛选 + 全文搜索：谜目、谜格、难度、校验结果、标签五个下拉加一个搜索框；搜索覆盖谜面 / 谜底 / 作者 / 出处 / 谜号 / 标签，中文查询额外走归一化（去标点、繁转简，`search.ts:27-37`）。
@@ -32,15 +39,18 @@
 - 设置页：活动名称 / 主办方 / 日期、打印默认参数、奖品预设增删、重新校验全部谜格、清空谜库与登记（`Settings.tsx`）。
 
 ## 6. 页面结构
-手写 hash 路由，无 react-router（`router.ts:13-24`）：
+手写 hash 路由，无 react-router（`router.ts:13-29`）：
 
 ```
-#/                谜库列表：筛选 / 搜索 / 50 条一页 / 勾选批量出条 / 导入导出 / 全库查重
-#/riddle/:id      谜条编辑：表单 + 实时校验面板 + 重复提示（id 为 new 时是新建）
-#/print           出条打印：版式参数、实时预览、裁切线、同页双联
-#/onsite          现场登记：按谜号登记、统计、兑奖号码、大屏模式
-#/library         谜格说明与示例
-#/settings        活动信息、打印默认、奖品预设、数据管理
+#/                  谜库列表：筛选 / 搜索 / 50 条一页 / 勾选批量出条 / 导入导出 / 全库查重 / 场次列
+#/schedule          分场编排总览：场次与摊位、跨场均衡建议、借用记录、导出清单、打印对照表
+#/session/:id       场次编排：按谜目/难度/标签分批分场、挂摊、跨场借用、场内谜面查重、摊位均衡
+#/print-schedule    分场对照表打印（A4 横向，按场次→摊位分组；?s=id 只打一场）
+#/riddle/:id        谜条编辑：表单 + 实时校验面板 + 重复提示（id 为 new 时是新建）
+#/print             出条打印：版式参数、实时预览、裁切线、同页双联
+#/onsite            现场登记：按谜号登记、统计、兑奖号码、大屏模式
+#/library           谜格说明与示例
+#/settings          活动信息、打印默认、奖品预设、数据管理（含分场清单/借用记录导出与清空）
 ```
 
 ## 7. 数据模型
@@ -61,8 +71,21 @@ type EventInfo    = { id: string; title: string; host: string; date: string; rid
 type PrintSetup   = { cardWmm: number; cardHmm: number; perPage: number;
                       showAnswerSlip: boolean; showCutLine: boolean; hostLine: string };
 type AppSettings  = { event: EventInfo; print: PrintSetup; prizes: string[] };
+
+// src/types.ts（分场编排，整份存 IndexedDB KV：key='schedule'）
+type Session   = { id: string; name: string; start: string; end: string; note?: string };
+type Booth     = { id: string; sessionId: string; name: string; owner: string; note?: string };
+type Placement = { riddleId: string; ownerSessionId: string; boothId?: string };
+type Borrow    = { id: string; riddleId: string; fromSessionId: string; toSessionId: string;
+                   boothId?: string; status: 'active'|'returned'; at: number; returnedAt?: number; reason?: string };
+type Schedule  = { sessions: Session[]; booths: Booth[]; placements: Placement[]; borrows: Borrow[]; updatedAt: number };
 ```
-默认值：卡片 63×135mm、每页 6 条、双联与裁切线默认开、奖项 `['参与奖','三等奖','二等奖','一等奖']`（`store.ts:10-18`）。
+默认值：卡片 63×135mm、每页 6 条、双联与裁切线默认开、奖项 `['参与奖','三等奖','二等奖','一等奖']`（`store.ts:10-18`）。编排为空时 `EMPTY_SCHEDULE`。
+
+**分场编排关键不变量**（`schedule.ts`）：
+- 每条谜条在 `placements` 中至多一条记录、`ownerSessionId` 唯一；场次在场集合 = 自有归属 ∪ 有效借入（`sessionRiddleIds`）。
+- 借入不改 `placements`，只追加 active `Borrow`；归还把记录置 returned（保留留痕）并从借用场撤下。
+- 删谜条走 `pruneRiddles`（无悬挂归属/借用）；删场次连带清摊位与归属、相关借用全部置 returned；删摊位只把谜条变未挂摊、归属保留。
 
 离线数据包（`public/data/`，与页面同源 fetch，不发外部请求）：
 
@@ -80,7 +103,8 @@ type AppSettings  = { event: EventInfo; print: PrintSetup; prizes: string[] };
 - **A4 排版计算**：常量 A4 210×297mm、页边距 10mm、卡间距 4mm（`print.ts:4-7`）；先把 `perPage` 钳到 1~12，再枚举列数 1~6、行数 `ceil(want/cols)`，取「卡片面积最大」的组合，卡片尺寸取配置值与可用区均分的较小值；被缩小时置 `adjusted` 并生成告警文案（`print.ts:29-62`）。
 - **离线数据加载**：`loadDataCtx(BASE_URL)` 并行 fetch 三个 JSON，任一失败不抛错，而是记 `loadError` 并保持 `loaded=false`，顶栏显示「校验数据未加载」（`datafiles.ts:17-36`、`App.tsx:50-52`）。谐音索引惰性构建，按 `DataCtx` 用 WeakMap 缓存（`validate.ts:13-18`）。
 - **CSV 解析**：状态机支持 BOM、CRLF、引号内逗号 / 换行 / 双引号转义（`csv.ts:9-33`），导出统一 `\r\n` 行尾（`csv.ts:39`）。导入预览对「文件内重复」与「与库内重复」分别判定，后者先查归一化全等、再按同谜目算相似度（`csv.ts:140-172`）。
-- **状态管理**：单例 class + `useSyncExternalStore`（`store.ts:35-57`、`router.ts:44-46`），写操作先改内存、再落 IndexedDB、后 emit；`saveRiddle` 保存时同步重算谜格校验并写 `checkedAt`（`store.ts:94-116`）。
+- **状态管理**：单例 class + `useSyncExternalStore`（`store.ts:35-57`、`router.ts:44-46`），写操作先改内存、再落 IndexedDB、后 emit；`saveRiddle` 保存时同步重算谜格校验并写 `checkedAt`（`store.ts:94-116`）。分场编排整份存一条 KV（`KV_SCHEDULE='schedule'`），所有变更经纯函数算出新 `Schedule` 后一次性落库。
+- **分场均衡算法**：`analyzeBalance` 先把「未挂摊」逐条压入当前最少摊，再循环把最多摊的末条挪到最少摊，直到 `max-min ≤ 1`（带总条数 guard 防死循环）；moves 同时给出可解释文案，可单步 / 一键套用，只改挂摊不动归属。`autoDistributeBooths` 则对新一批谜条按「最少摊优先」贪心挂摊。
 - **性能**：筛选与查重都写成纯函数便于基准测试，2000 条谜库的带条件筛选、空筛选全量返回、单条查重均有 < 100ms 断言（`perf.test.ts:23,33,41`）；打印预览对第 3 页之后的 `.sheet` 用 `content-visibility: auto` 降低渲染开销（`PrintPage.tsx:83`）。
 
 ## 9. 交互与视觉要点
@@ -89,28 +113,32 @@ type AppSettings  = { event: EventInfo; print: PrintSetup; prizes: string[] };
 - 谜条以黑白打印为优先：卡片纯白底、谜号 26pt、谜面 14pt、谜目与落款 9.5~10.5pt，打印媒体下强制 `color: #000`（`styles.css:216-244`）。
 - 现场页面向单手快速操作：谜号输入框 24px 居中、按钮用 `btn-lg`、当前谜条谜号 52px（`styles.css:167-178`）；输入框自动聚焦（`Onsite.tsx:30`），回车即查找（`Onsite.tsx:119`）。
 - 大屏模式全屏深红径向渐变，谜号 110px、谜面 54px、提示 30px（`styles.css:184-196`），容器带 `role="dialog"`。
-- 移动端：编辑页在 860px 以下由 3:2 双栏改单栏（`styles.css:153-154`）。
+- 移动端：编辑页在 860px 以下由 3:2 双栏改单栏（`styles.css:153-154`）；场次编排页在 960px 以下左右双栏改单栏。
+- 分场编排：场次卡片、摊位圆角 chip、均衡条形图（`.balance-fill` 取暖黄渐变、未挂摊用红色条）；借用/自有/借入/借出用不同 badge，图标加文字不单靠颜色。
+- 对照表打印：`.cp-sheet` 每场一节、`.cp-block` 每摊一块、表格 `break-inside: avoid`；打印时通过 `<html>.print-landscape` 套用命名页 `@page landscape { A4 landscape }`，黑字可读。
 - 打印时隐藏顶栏、页脚、工具条与页面标题，每张 `.sheet` 后强制分页、最后一页不分页（`styles.css:232-244`）。
 
 ## 10. 验收标准
-- **单元测试 106 例全通过**：谜格校验 49、CSV 25、重复检测 13、打印版式 9、离线数据 7、性能 3（`npx vitest run` 输出 `Tests 106 passed`）。
+- **单元测试 135 例全通过**：谜格校验 49、CSV 25、重复检测 13、打印版式 9、离线数据 7、性能 3、**分场编排 27（场次/摊位增删、唯一归属、转移隔离、场内 exact/similar 查重、跨场借用与归还、均衡 moves、总览、CSV 导出）+ 分场 store 集成 2**（`npx vitest run --exclude **/e2e/**` 输出 `Tests 135 passed`）。
 - **E2E 19 例**覆盖：导入示例 53 条（预览显示「新增 53 / 格式错误 0」）→ 校验徽标（秋千格正例存疑、误例不通过、无格正例通过）→ 批量选 3 条出条（`.sheet` 1 页、`.card` 3 张、回收联含「猜中者姓名」、谜面计算字号 ≥ 18.5px ≈ 14pt）→ 现场登记与重复登记提示 → 兑奖号码 `DJ-0001` → 谜库导出 CSV 断言前三字节 `EF BB BF` → 300 条谜条 = 50 页 × 6 条且首卡 `data-no=1`、末卡 `data-no=300` → 断网登记 3 条后直接读 IndexedDB 计数为 3、刷新后仍在 → 全程 console 无 error（`tests/e2e/app.spec.ts`）。
 - **性能**：2000 条谜库带条件筛选、空筛选全量返回、单条查重均 < 100ms（`tests/perf.test.ts`）。
 - **排版**：每页 6 条 = 3 列 × 2 行、9 条 = 3 列 × 3 行、12 条不越界、`perPage=0` 钳为 1、63×135mm 在 6 条/页时宽度受限自动缩小并告警、超大卡片缩小后不超 A4 可用区（`tests/print-layout.test.ts`）。
 - **离线**：断网下完成「登记 → 刷新 → 记录仍在」。
 - **打印**：A4 实际打印后按裁切线裁开，上联挂出、下联回收；谜面字号 ≥ 14pt（浏览器实测 18.66px）。
+- **分场编排**：建场次/摊位 → 按谜目筛选分批分场后清单见条数；同谜面（标点不同）分入同场被拦、分到不同场允许；转移归属后原场不再含该条、其它场不动；跨场借入显示「借用」徽标且总览计数 +1、归还后记录保留；不均衡时一键均衡使各摊相差 ≤1；导出 CSV 前三字节 `EF BB BF` 且含表头「场次,开始,结束,摊位…」；`#/print-schedule` 一场一张 `.cp-sheet`；刷新后场次仍在。
 
 ## 11. 边界（刻意不做）
-不做在线猜谜答题与排行榜、不做投票问卷与开奖抽奖系统、不做电商兑奖与积分商城、不做社交分享与活动社区，也不做多人协同与云端同步——核心只做**谜库管理 + 谜格校验 + 谜条打印 + 现场登记**。
+不做在线猜谜答题与排行榜、不做投票问卷与开奖抽奖系统、不做电商兑奖与积分商城、不做社交分享与活动社区，也不做多人协同与云端同步——核心只做**谜库管理 + 谜格校验 + 分场编排 + 谜条打印 + 现场登记**。分场编排在同一浏览器本地完成，不做多人同时拖拽协同、不做摊位容量/物料库存等活动运营管理。
 
 ### 已知实现边界
-- README「测试」表写「谜格校验 48 例」，实际 `tests/validate.test.ts` 为 **49 例**（`README.md:144`）；单元测试总数 106 与 E2E 19 与代码一致。
+- 单元测试现共 **135 例**（含新增分场编排 27 + store 集成 2），`npx vitest run --exclude '**/e2e/**'` 全通过；E2E 新增 5 个分场用例（建场/建摊/分批分场、唯一归属与借用、场内重复拦截、BOM 清单与对照表、刷新持久化）。
 - README 写「重新生成：`node scripts/gen-data.mjs`（源数据 URL 见脚本注释）」，但脚本注释只有数据源名（pinyin-data、Make Me a Hanzi）没有 URL，且脚本从 `process.argv[2]/[3]` 读本地文本文件、本身不下载数据（`scripts/gen-data.mjs:1-9`）。
-- `npm test` 即 `vitest run`，项目没有 vitest 配置文件，默认 include 会把 `tests/e2e/app.spec.ts` 一并收集，该文件收集失败使整条命令以**退出码 1**结束（106 个单元用例本身全通过）。
+- `npm test` 即 `vitest run`，项目没有 vitest 配置文件，默认 include 会把 `tests/e2e/app.spec.ts` 一并收集，该文件收集失败使整条命令以**退出码 1**结束（单元用例需用 `--exclude '**/e2e/**'` 跑）。
 - **镜像内不含 `nginx.conf`**：`.dockerignore` 排除了它（`.dockerignore:12`），Dockerfile 只拷 `dist/`（`Dockerfile:11`），配置靠 compose 只读卷挂载（`docker-compose.yml:9`）。脱离 compose 直接 `docker run` 该镜像时用的是 nginx 默认配置，没有 `/healthz`、SPA 回退与 gzip 策略。
-- `OnsiteRecord.winnerRef` 与登记表 CSV 的「联系方式」列存在（`types.ts:31`、`Settings.tsx:38`），但现场登记页没有该输入项，导出时该列恒为空。
-- `EventInfo.riddleIds` 会被维护（删谜条时过滤、清空时置空，`store.ts:151,159`），但没有任何界面往里添加，活动清单始终是空数组。
-- `store.loadSample()` 已实现但无调用方（`store.ts:165-167`），示例谜库只能从谜库页手动导入 CSV。
+- `OnsiteRecord.winnerRef` 与登记表 CSV 的「联系方式」列存在（`types.ts`、`Settings.tsx`），但现场登记页没有该输入项，导出时该列恒为空。
+- `EventInfo.riddleIds` 仍会被维护但无界面写入；活动级清单已由「分场编排」（`Schedule.placements`）取代，二者暂未合并。
+- `store.loadSample()` 已实现但无调用方（`store.ts`），示例谜库只能从谜库页手动导入 CSV。
+- 分场的「同一场次不重复」以**归一化全等硬拦截 + 同谜目 ≥0.85 相似预警**为准；相似预警只提示不阻断（与谜库查重口径一致）。
 - README 的「镜像体积约 22MB」「构建上下文约 0.9MB」未在代码中体现，需实际 `docker build` 才能核实，本次未构建。
 
 ## 12. 容器化与构建（Docker）
